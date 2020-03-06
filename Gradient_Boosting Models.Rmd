@@ -1,0 +1,129 @@
+---
+title: "XGBoost Models"
+author: 'Vishva Shah'
+date: "11/12/2019"
+output:
+  pdf_document: 
+    fig_crop: no
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(tinytex.verbose = TRUE)
+```
+
+```{r,tidy=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+
+setwd("Yourpath")
+
+library(SmartEDA)
+library(readr)
+library(randomForest)
+library(zoo)
+library(mice)
+library(e1071)
+library(dplyr)
+library(tidyr)
+library(factoextra)
+library(PCAmixdata)
+library(caret)
+library(glmnet)
+library(xgboost)
+
+set.seed(1234)
+
+```
+
+## Gradient Boosting:
+
+# 1st Gradient Boosting Model – depth =5, eta = 0.001, gamma =3:
+
+```{r,tidy=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+
+TD = read_csv("Training.csv")
+
+GBD = data.frame(TD)
+
+GBD = GBD[1:10000,]
+
+GBD = GBD[,-which(colMeans(is.na(GBD)) > 0)]
+
+GBD[sapply(GBD, is.factor)] = data.matrix(GBD[sapply(GBD, is.factor)])
+
+GBD %>%
+   mutate_if(is.character, factor)
+
+GBD[sapply(GBD, is.character)] = lapply(GBD[sapply(GBD, is.character)],as.factor)
+
+GBD[sapply(GBD, is.factor)] = lapply(GBD[sapply(GBD, is.factor)],as.numeric)
+
+split(names(GBD),sapply(GBD, function(x) paste(class(x), collapse=" ")))
+
+GBD$target = as.factor(GBD$target)
+
+Target = GBD$target
+label = as.integer(GBD$target)-1
+GBD$target = NULL
+
+n = nrow(GBD)
+
+train.index = sample(n,floor(0.65*n))
+train.data = as.matrix(GBD[train.index,])
+train.label = label[train.index]
+test.data = as.matrix(GBD[-train.index,])
+test.label = label[-train.index]
+
+
+xgb.train = xgb.DMatrix(data=train.data,label=train.label)
+xgb.test = xgb.DMatrix(data=test.data,label=test.label)
+
+
+num_class = length(levels(Target))
+params = list( booster="gbtree", eta=0.001, max_depth=5, gamma=3, colsample_bytree=1, objective="multi:softmax",
+  eval_metric="mlogloss", num_class=num_class)
+
+
+xgb.fit=xgb.train(  params=params,   data=xgb.train,  nrounds=10000,  early_stopping_rounds=5, watchlist=list(val1=xgb.train,val2=xgb.test),  verbose=0 )
+
+xgb.fit
+
+xgb.pred = predict(xgb.fit,test.data,reshape=T)
+xgb.pred
+xgb.pred = as.data.frame(xgb.pred)
+colnames(xgb.pred) = levels(Target)
+xgb.pred
+
+xgb.pred$prediction = apply(xgb.pred,1,function(x) colnames(xgb.pred)[which.max(x)])
+xgb.pred$label = levels(Target)[test.label+1]
+xgb.pred
+
+result = sum(xgb.pred$prediction==xgb.pred$label)/nrow(xgb.pred)
+print(paste("Final Accuracy =",sprintf("%1.2f%%", 100*result)))
+
+```
+
+# 2nd Gradient Boosting Model – depth =3, eta = 0.005, gamma =5:
+
+```{r,tidy=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+params_2 = list( booster="gbtree",   eta=0.005,   max_depth=3,   gamma=5,  colsample_bytree=1, objective="multi:softmax",   eval_metric="mlogloss",   num_class=num_class )
+
+xgb.fit_2=xgb.train(  params=params_2,   data=xgb.train,  nrounds=10000,  early_stopping_rounds=5, watchlist=list(val1=xgb.train,val2=xgb.test),  verbose=0 )
+
+xgb.fit_2
+
+xgb.pred_2 = predict(xgb.fit_2,test.data,reshape=T)
+xgb.pred_2
+
+xgb.pred_2 = as.data.frame(xgb.pred_2)
+colnames(xgb.pred_2) = levels(Target)
+xgb.pred_2
+
+xgb.pred_2$prediction = apply(xgb.pred_2,1,function(x) colnames(xgb.pred_2)[which.max(x)])
+xgb.pred_2$label = levels(Target)[test.label+1]
+xgb.pred_2
+
+result_2 = sum(xgb.pred_2$prediction==xgb.pred_2$label)/nrow(xgb.pred_2)
+print(paste("Final Accuracy =",sprintf("%1.2f%%", 100*result_2)))
+```
